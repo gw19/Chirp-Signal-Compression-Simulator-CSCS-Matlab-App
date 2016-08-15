@@ -9,6 +9,6 @@ First, determine the bandwidth, pulse duration, sampling frequency and chirp for
 Step 2: Targets - Set ranges of targets
 Second, assume that all of the targets are on the ground range, input the radar height, incidence angle, and ranges between the near range and targets, check if it can be identified by compressing the combination signal after the matched filter.
 
-Thank You.
-GW.Chen
-gw.chen19@gmail.com
+Thank You.\n
+GW.Chen\n
+gw.chen19@gmail.com\n
