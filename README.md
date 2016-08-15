@@ -1,6 +1,8 @@
 # CSCS
 ### CSCS (Chirp Signal Compression Simulator) is a Matlab application for easily simulate the single/multi-target linear frequency modulation (chirp) signal compression.  
 
+Key words: signal, matched filter, compression, linear frequency modulation (linear FM), chirp, RADAR.  
+
 Double click the .mlappinstall file to install the Matlab application.  
 Need Matlab R2014a or newer version. (Recommend R2016a)  
 
