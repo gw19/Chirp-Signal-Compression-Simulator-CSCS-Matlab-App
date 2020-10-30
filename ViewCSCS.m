@@ -1,7 +1,7 @@
-classdef ViewCSCS < ModelCSCS
+classdef ViewCSCS < handle
 
     % Properties that correspond to app components
-    properties (Access = public)
+    properties (Access = protected)
         UIFigure               matlab.ui.Figure                   % Single ...
         UISot                  matlab.ui.control.UIAxes           % Signal ...
         UISotdb                matlab.ui.control.UIAxes           % Signal ...
@@ -109,24 +109,57 @@ classdef ViewCSCS < ModelCSCS
     % 2016-8-5
     
     properties (Access = protected)
+        model
         autoUpdate
+        isSonar
     end
 
     methods (Access = protected)
         
         function updatePlot(app)
-            Fsn=1.0*app.Fsp.Value;
-            [scale, B, T, ~, Ts, N, c, H] = getDesignParameters( ...
-                app, ...
+            [scale, B, T, Fs, Ts, N, c, H] = getDesignParameters( ...
+                app.model, ...
                 1.0*app.Bw.Value, ...
                 1.0*app.Tp.Value, ...
-                Fsn*app.Bw.Value, ...
+                1.0*app.Fsp.Value, ...
                 1.0*app.h.Value ...
             );
+            K = B/T;
+            Fsn=Fs/B;
             angi = app.Theta.Value;        % angle of incidence [degree]
             t = linspace(0, T, N);
             
-            [St, Sot, Sotdb, tm, Srt, Stc, Sotc, Sotcdb] = chirp(app,B,T,Ts,N,c,H,angi);
+            target_number = 6;
+            GR1 = zeros(1, target_number);
+            for ii = 1 : target_number
+                swTarget_Value = eval(['app.swTarget', num2str(ii), '.Value']);
+                if strcmp(swTarget_Value, 'On')
+                    GR1(ii) = eval(['app.InputTarget', num2str(ii), '.Value']);
+                end
+            end
+            switch app.swChirp.Value
+                case 'Down-Chirp'
+                    chirpType=-1;
+
+                case 'Symmetry-Chirp'
+                    chirpType=0;
+                    
+                case 'Up-Chirp'
+                    chirpType=1;                    
+            end
+            doKaiser=0;
+            if strcmp(app.swKaiser.Value, 'On')
+                doKaiser = 1;
+            end
+            alfa = app.KnobKaiser.Value;
+
+            doAWGN=0;
+            if strcmp(app.swAWGN.Value, 'On')
+                doAWGN = 1;
+            end
+            SNR = app.KnobAWGN.Value;
+            [St, Sot, Sotdb, Ht] = chirp(app.model,K,T,N,doAWGN,SNR,doKaiser,alfa,chirpType);
+            [tm, Srt, Stc, Sotc, Sotcdb] = targets(app.model,K,T,Ts,c,H,doAWGN,SNR,Ht,chirpType,angi,GR1);
             
             % -- Plot figures -- %
             % s(t)
@@ -208,185 +241,7 @@ classdef ViewCSCS < ModelCSCS
                 ylim(app.UIStc, [-max(abs(St))-0.5, max(abs(St))+0.5]);
             end
         end
-
-        %% Chirp set
-        function [St, Sot, Sotdb, tm, Srt, Stc, Sotc, Sotcdb] = chirp(app,B,T,Ts,N,c,H,angi)
-            
-            K = B/T;
-            A = 1;
-            
-            switch app.swChirp.Value
-                case 'Symmetry-Chirp'
-                    t = linspace(-0.5*T, 0.5*T, N);
-                    
-                case 'Up-Chirp'
-                    t = linspace(0, T, N);
-                    
-                case 'Down-Chirp'
-                    t = linspace(-T, 0, N);
-            end
-
-            % -- General waveform -- %
-            St = A*exp(1i*pi*K*t.^2);
-            
-            if strcmp(app.swAWGN.Value, 'On')
-                St = awgn(app, St);
-            end
-            
-            % -- Matched Filter -- %
-            t0 = linspace(-0.5*T, 0.5*T, N);
-            Ht = exp(-1i*pi*K*t0.^2);
-            
-            if strcmp(app.swKaiser.Value, 'On')
-                Ht = kaiser_window(app, Ht);
-            end
-            
-            % -- Convolution (s(t), h(t)) -- %
-            switch app.swChirp.Value
-                case 'Symmetry-Chirp'
-                    Sot = conv(St, Ht, 'Same');
-                    
-                case 'Up-Chirp'
-                    Sot = conv(St, Ht);
-                    Sot = Sot(1:length(St));
-                    
-                case 'Down-Chirp'
-                    Sot = conv(St, Ht);
-                    Sot = Sot(end-length(St)+1:end);
-            end
-            Sotn = Sot./max(Sot);
-            Sotdb = 20*log10(abs(Sotn));
-            [tm, Srt, Stc, Sotc, Sotcdb] = targets(app,T,Ts,c,K,H,Ht,angi);
-        end
         
-        %% Targets set
-        function [tm, Srt, Stc, Sotc, Sotcdb] = targets(app,T,Ts,c,K,H,Ht,angi)
-            
-            %% -- Multiple Targets -- %
-            GR0 = H*tand(angi);            % ground range from Nadir to Near Range [m]
-            target_number = 6;
-            GR1 = zeros(1, target_number);
-            for ii = 1 : target_number
-                swTarget_Value = eval(['app.swTarget', num2str(ii), '.Value']);
-                if strcmp(swTarget_Value, 'On')
-                    GR1(ii) = eval(['app.InputTarget', num2str(ii), '.Value']);
-                end
-            end
-            
-            if isempty(find(GR1, 1)) == 1
-                GR1 = 0;
-            else
-                GR1 = GR1(GR1~=0);
-            end
-            
-            % Ground Range between Nadir and Targets
-            GR = GR0 + GR1;
-            
-            % Range between Radar and Targets.
-            R = sqrt(GR.^2 + H^2);
-            
-            % range interval
-            % time space before echo signals [s].
-            switch app.swChirp.Value
-                case 'Symmetry-Chirp'
-                    Rmin = min(R) - c*T/3;
-                    Rmax = max(R) + c*T/3;
-                    
-                case 'Up-Chirp'
-                    Rmin = min(R) - c*T/3;
-                    Rmax = max(R) + c*T/1.2;
-                    
-                case 'Down-Chirp'
-                    Rmin = min(R) - c*T/1.2;
-                    Rmax = max(R) + c*T/3;
-            end
-            
-            Rwid = Rmax - Rmin;    % receive window [meter]
-            Twid = 2*Rwid/c;       % receive window [second]
-            Nwid = ceil(Twid/Ts);  % receive window [number]
-            
-            % radar cross section
-            
-            RCS = ones(1, length(R));
-            
-            % -- Generate the echo -- %
-            % receive window
-            % open window when t = 2*Rmin/C
-            % close window when t = 2*Rmax/C
-            tm = linspace(2*Rmin/c, 2*Rmax/c, Nwid);
-            
-            % number of targets
-            MN = length(R);
-            
-            % (total window time) - (received moment of each echo signals)
-            % the received moment of each signals should be td = 0
-            % for convenience, we set echo received time located at chirp center.
-            t_echo_center = 2*R/c;
-            td = repmat(tm, MN, 1) - repmat(t_echo_center', 1, Nwid);
-            
-            % radar echo from point targets
-            switch app.swChirp.Value
-                case 'Symmetry-Chirp'
-                    Srt = exp(1i*pi*K*td.^2).*(abs(td)<=T/2);
-
-                case 'Up-Chirp'
-                    Srt = exp(1i*pi*K*td.^2).*(td >= 0 & td <= T);
-                    
-                case 'Down-Chirp'
-                    Srt = exp(1i*pi*K*td.^2).*(td >= -T & td <= 0);
-            end
-
-            if strcmp(app.swAWGN.Value, 'On')
-                size_srt = size(Srt);
-                for ii = 1 : size_srt
-                    Srt(ii, :) = awgn(app, Srt(ii, :));
-                end
-            end
-            % combine all signals continuity
-            Stc = RCS*Srt;
-            
-            % -- Convolution (s(t), h(t)) of Multiple Targets -- %
-            switch app.swChirp.Value
-                case 'Symmetry-Chirp'
-                    Sotc = conv(Stc, Ht, 'Same');
-                    
-                case 'Up-Chirp'
-                    Sotc = conv(Stc, Ht);
-                    Sotc = Sotc(1:length(Stc));
-                    
-                case 'Down-Chirp'
-                    Sotc = conv(Stc, Ht);
-                    Sotc = Sotc(end-length(Stc)+1:end);
-            end
-            Sotcn = Sotc/max(Sotc);
-            Sotcdb = 20*log10(abs(Sotcn));
-            
-        end
-        
-        %% Additive White Gaussian Noise
-        function St_awgn = awgn(app, St)
-            % y = awgn(x, SNR) adds AWGN noise vector to signal 'x' to generate 
-            % a resulting signal vector y of specified SNR in dB
-            
-            % Set the random generator seed to default (for comparison only)
-            %rng('default');            
-            % SNR to linear scale
-            SNR = app.KnobAWGN.Value;
-            St_awgn = St + awgn@ModelCSCS(app, St, SNR);        
-        end
-        
-        %% Kaiser Window
-        function htw_ks = kaiser_window(app, ht)
-            % Kaiser window function for matched filter
-            % GW
-            % 2016-7-22
-
-            % Parameters
-            % Alpha
-            alfa = app.KnobKaiser.Value;
-            htw_ks = kaiser_window@ModelCSCS(app, ht,alfa);
-        end
-
     end
 
 
@@ -1105,8 +960,14 @@ classdef ViewCSCS < ModelCSCS
     methods (Access = public)
 
         % Construct app
-        function app = CSCS()
-
+        function app = ViewCSCS(model)
+            if nargin == 0
+                model=ModelCSCS();
+            end
+            
+            app.model = model;
+            app.isSonar = model.isSonar;
+            
             if nargout == 0
                 clear app
             end

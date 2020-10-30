@@ -407,17 +407,21 @@ classdef CSCS < matlab.apps.AppBase & ViewCSCS
     methods (Access = public)
 
         % Construct app
-        function app = CSCS()
-
+        function app = CSCS(model)
+            if nargin == 0
+                model = ModelCSCS();
+            end
+            app@ViewCSCS(model)
+            
             % Create and configure components
             createComponents(app)
+            run(app)
 
             if nargout == 0
-                run(app)
                 clear app
             end
         end
-
+        
         function run(app)
             % Register the app with App Designer
             registerApp(app, app.UIFigure)
@@ -426,11 +430,5 @@ classdef CSCS < matlab.apps.AppBase & ViewCSCS
             runStartupFcn(app, @startupFcn)
         end
 
-        % Code that executes before app deletion
-        function delete(app)
-
-            % Delete UIFigure when app is deleted
-            % delete(app.UIFigure) 
-        end
     end
 end
