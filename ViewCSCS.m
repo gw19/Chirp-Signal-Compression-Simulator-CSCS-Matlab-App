@@ -111,23 +111,12 @@ classdef ViewCSCS < handle
     properties (Access = protected)
         model
         autoUpdate
-        isSonar
+        isRadar
     end
 
     methods (Access = protected)
-        
+         
         function updatePlot(app)
-            [scale, B, T, Fs, Ts, N, c, H] = getDesignParameters( ...
-                app.model, ...
-                1.0*app.Bw.Value, ...
-                1.0*app.Tp.Value, ...
-                1.0*app.Fsp.Value, ...
-                1.0*app.h.Value ...
-            );
-            K = B/T;
-            Fsn=Fs/B;
-            angi = app.Theta.Value;        % angle of incidence [degree]
-            t = linspace(0, T, N);
             
             target_number = 6;
             GR1 = zeros(1, target_number);
@@ -158,9 +147,22 @@ classdef ViewCSCS < handle
                 doAWGN = 1;
             end
             SNR = app.KnobAWGN.Value;
-            [St, Sot, Sotdb, Ht] = chirp(app.model,K,T,N,doAWGN,SNR,doKaiser,alfa,chirpType);
-            [tm, Srt, Stc, Sotc, Sotcdb] = targets(app.model,K,T,Ts,c,H,doAWGN,SNR,Ht,chirpType,angi,GR1);
             
+            angi = 1.0* app.Theta.Value;
+            [scale, Fsn, t, St, Sot, Sotdb, tm, Srt, Stc, Sotc, Sotcdb] = app.model.simulate(...
+                app.isRadar, ...
+                1.0*app.Bw.Value, ...
+                1.0*app.Tp.Value, ...
+                1.0*app.Fsp.Value, ...
+                1.0*app.h.Value, ...
+                doAWGN, ...
+                SNR, ...
+                doKaiser, ...
+                alfa, ...
+                chirpType, ...
+                angi, ...
+                GR1 ...
+            );
             % -- Plot figures -- %
             % s(t)
             plot(app.UISt, t*scale, real(St));
@@ -292,10 +294,10 @@ classdef ViewCSCS < handle
             % Create UISot
             app.UISot = uiaxes(app.UIFigure);
             title(app.UISot, 'Signal Compressed after Matched Filter');
-            if app.isSonar
-                xlabel(app.UISot, 'Time [ms]');
-            else
+            if app.isRadar
                 xlabel(app.UISot, 'Time [us]');
+            else
+                xlabel(app.UISot, 'Time [ms]');
             end
 
             ylabel(app.UISot, 'Amplitude');
@@ -307,10 +309,10 @@ classdef ViewCSCS < handle
             % Create UISotdb
             app.UISotdb = uiaxes(app.UIFigure);
             title(app.UISotdb, 'Signal Compressed after Matched Filter in [dB]');
-            if app.isSonar
-                xlabel(app.UISotdb, 'Time [ms]');
-            else
+            if app.isRadar
                 xlabel(app.UISotdb, 'Time [us]');
+            else
+                xlabel(app.UISotdb, 'Time [ms]');
             end
             ylabel(app.UISotdb, 'dB');
             app.UISotdb.Box = 'on';
@@ -330,10 +332,10 @@ classdef ViewCSCS < handle
             % Create UIStc
             app.UIStc = uiaxes(app.UIFigure);
             title(app.UIStc, 'Combination of all Signals');
-            if app.isSonar
-                xlabel(app.UIStc, 'Time [ms]');
-            else
+            if app.isRadar
                 xlabel(app.UIStc, 'Time [us]');
+            else
+                xlabel(app.UIStc, 'Time [ms]');
             end
             ylabel(app.UIStc, 's(t)');
             app.UIStc.Box = 'on';
@@ -357,10 +359,10 @@ classdef ViewCSCS < handle
             app.LabelSlider.VerticalAlignment = 'center';
             app.LabelSlider.FontSize = 16;
             app.LabelSlider.Position = [51 458 121 20];
-            if(app.isSonar)
-                app.LabelSlider.Text = 'Bandwidth [kHz]';
-            else
+            if(app.isRadar)
                 app.LabelSlider.Text = 'Bandwidth [MHz]';
+            else
+                app.LabelSlider.Text = 'Bandwidth [kHz]';
             end
 
             % Create Bw
@@ -382,10 +384,10 @@ classdef ViewCSCS < handle
             app.Label.VerticalAlignment = 'center';
             app.Label.FontSize = 16;
             app.Label.Position = [51 382 133 20];
-            if(app.isSonar)
-                app.Label.Text = 'Pulse duration [ms]';
-            else
+            if(app.isRadar)
                 app.Label.Text = 'Pulse duration [us]';
+            else
+                app.Label.Text = 'Pulse duration [ms]';
             end
             % Create Tp
             app.Tp = uislider(app.Tab);
@@ -966,7 +968,7 @@ classdef ViewCSCS < handle
             end
             
             app.model = model;
-            app.isSonar = model.isSonar;
+            app.isRadar = model.isRadar;
             
             if nargout == 0
                 clear app

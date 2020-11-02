@@ -1,34 +1,29 @@
-classdef ModelCSCS < handle
-    properties (Access = public)
-        isSonar
-    end
+classdef ModelCSCS < HowToCSCS
     
-    methods (Access = public)
+    methods (Static)
 
-        function mps = waveSpeed(model)
+        function mps = waveSpeed(isRadar)
             specificHeatAtSTP = 1.4;  % source NASA
             gasConstantForEarthsTroposphere = 286.0; % source NASA
             offsetFromCtoK = 273.15; % source NASA
             conversionFactorAtSTP=(specificHeatAtSTP*gasConstantForEarthsTroposphere)^.5;
             cMps=@(Tc) conversionFactorAtSTP*(Tc+offsetFromCtoK)^.5;  
-            %by definition 1hr = 3600s and 1 nautical mile = 1852 m
-            %cKts=@(Tc) cMps(Tc)*3600/1852;  
-            if(model.isSonar) 
-                mps = cMps(24.0);           % soundspeed at temperature 24-deg C
-            else
+            if(isRadar) 
                 mps = 3.0e8;                % light speed
+            else
+                mps = cMps(24.0);           % soundspeed at temperature 24-deg C
             end
         end
 
         function [scale, B, T, Fs, Ts, N, c, H] = getDesignParameters( ...
-            model, ...
+            isRadar, ...
             modulationBandwidth, ...
             pulseDuration, ...
             frequencyMultiplier, ...
             arrayHeight ...
         )
             scale = 1e6;
-            if(model.isSonar)
+            if(~isRadar)
                 scale = 1e3;
             end
             if modulationBandwidth == 0    % chirp frequency modulation bandwidth
@@ -48,13 +43,68 @@ classdef ModelCSCS < handle
             end
             Ts = 1/Fs;              % sampling time per grid
             N = T/Ts;               % grid points
-            c = waveSpeed(model);
+            c = ModelCSCS.waveSpeed(isRadar);
             H = arrayHeight*1e-6*scale; % array height [m for radar, mm for sonar]
         end
         
-        %% Chirp set
-        function [St, Sot, Sotdb,Ht] = chirp(model,K,T,N,doAWGN,SNR,doKaiser,alpha,chirpType)
+        %% Additive White Gaussian Noise
+        function noise_awgn = awgn(St, SNR)
+            % y = awgn(x, SNR) adds AWGN noise vector to signal 'x' to generate 
+            % a resulting signal vector y of specified SNR in dB
             
+            % Set the random generator seed to default (for comparison only)
+            %rng('default');
+            
+            L = length(St);
+                        
+            % Calculate actual symbol energy
+            Esym = sum(abs(St).^2)/L;
+            
+            % Find the noise spectral density
+            N0 = Esym/SNR;
+            if(isreal(St))
+                % Standard deviation for AWGN Noise when x is real
+                noiseSigma = sqrt(N0);
+                % Computed noise
+                noise_awgn = noiseSigma*randn(1, L);
+            else
+                % Standard deviation for AWGN Noise when x is complex
+                noiseSigma = sqrt(N0/2);
+                % Computed noise
+                noise_awgn = noiseSigma*(randn(1, L) + 1i*randn(1, L));
+            end
+    
+        end
+        
+        %% Kaiser Window
+        function htw_ks = kaiser_window(ht, alpha)
+            % Kaiser window function for matched filter
+            % GW
+            % 2016-7-22
+            
+            % N points in s(t)
+            N = length(ht);
+            Ns = linspace(-0.5*N, 0.5*N, N);
+            
+            % Kaiser window
+            % wt_ks = I0u/I0d,
+            
+            % I0 is the zeroth-order modified Bessel function of the first kind,
+            % I0u = upper term, I0d = lower term,
+            
+            % alpha is an arbitrary, non-negative real number that determines ...
+            % the shape of the window. In the frequency domain, it determines ...
+            % the trade-off between main-lobe width and side lobe level, ...
+            % which is a central decision in window design.
+            
+            I0u = besseli(0, pi*alpha*sqrt(1-((2*Ns)/N).^2));
+            I0d = besseli(0, pi*alpha);
+            wt_ks = I0u./I0d;
+            htw_ks = ht.*wt_ks;
+        end
+        
+        %% Chirp set
+        function [t, St, Sot, Sotdb,Ht] = chirp(K,T,N,doAWGN,SNR,doKaiser,alpha,chirpType)            
             A = 1;
             
             switch chirpType
@@ -72,7 +122,7 @@ classdef ModelCSCS < handle
             St = A*exp(1i*pi*K*t.^2);
             
             if doAWGN
-                St = St + awgn(model, St, SNR);
+                St = St + ModelCSCS.awgn(St, SNR);
             end
             
             % -- Matched Filter -- %
@@ -80,7 +130,7 @@ classdef ModelCSCS < handle
             Ht = exp(-1i*pi*K*t0.^2);
             
             if doKaiser
-                Ht = kaiser_window(model, Ht, alpha);
+                Ht = ModelCSCS.kaiser_window(Ht, alpha);
             end
             
             % -- Convolution (s(t), h(t)) -- %
@@ -101,7 +151,7 @@ classdef ModelCSCS < handle
         end
         
         % Targets set
-        function [tm, Srt, Stc, Sotc, Sotcdb] = targets(model,K,T,Ts,c,H,doAWGN,SNR,Ht,chirpType,angi,GR1)
+        function [tm, Srt, Stc, Sotc, Sotcdb] = targets(K,T,Ts,c,H,doAWGN,SNR,Ht,chirpType,angi,GR1)
             
             %% -- Multiple Targets -- %
             GR0 = H*tand(angi);            % ground range from Nadir to Near Range [m]
@@ -172,7 +222,7 @@ classdef ModelCSCS < handle
             if doAWGN
                 size_srt = size(Srt);
                 for ii = 1 : size_srt
-                    Srt(ii, :) = Srt(ii,:) + awgn(model, Srt(ii, :),SNR);
+                    Srt(ii, :) = Srt(ii,:) + ModelCSCS.awgn(Srt(ii, :),SNR);
                 end
             end
             % combine all signals continuity
@@ -196,73 +246,44 @@ classdef ModelCSCS < handle
             
         end
 
-        %% Additive White Gaussian Noise
-        function noise_awgn = awgn(~, St, SNR)
-            % y = awgn(x, SNR) adds AWGN noise vector to signal 'x' to generate 
-            % a resulting signal vector y of specified SNR in dB
-            
-            % Set the random generator seed to default (for comparison only)
-            %rng('default');
-            
-            L = length(St);
-                        
-            % Calculate actual symbol energy
-            Esym = sum(abs(St).^2)/L;
-            
-            % Find the noise spectral density
-            N0 = Esym/SNR;
-            if(isreal(St))
-                % Standard deviation for AWGN Noise when x is real
-                noiseSigma = sqrt(N0);
-                % Computed noise
-                noise_awgn = noiseSigma*randn(1, L);
-            else
-                % Standard deviation for AWGN Noise when x is complex
-                noiseSigma = sqrt(N0/2);
-                % Computed noise
-                noise_awgn = noiseSigma*(randn(1, L) + 1i*randn(1, L));
-            end
-    
-        end
-        
-        %% Kaiser Window
-        function htw_ks = kaiser_window(~, ht, alpha)
-            % Kaiser window function for matched filter
-            % GW
-            % 2016-7-22
-            
-            % N points in s(t)
-            N = length(ht);
-            Ns = linspace(-0.5*N, 0.5*N, N);
-            
-            % Kaiser window
-            % wt_ks = I0u/I0d,
-            
-            % I0 is the zeroth-order modified Bessel function of the first kind,
-            % I0u = upper term, I0d = lower term,
-            
-            % alpha is an arbitrary, non-negative real number that determines ...
-            % the shape of the window. In the frequency domain, it determines ...
-            % the trade-off between main-lobe width and side lobe level, ...
-            % which is a central decision in window design.
-            
-            I0u = besseli(0, pi*alpha*sqrt(1-((2*Ns)/N).^2));
-            I0d = besseli(0, pi*alpha);
-            wt_ks = I0u./I0d;
-            htw_ks = ht.*wt_ks;
-        end
-        
+        function [scale, Fsn, t, St, Sot, Sotdb, tm, Srt, Stc, Sotc, Sotcdb] = simulate(...
+                isRadar, ...
+                modulationBandwidth, ...
+                pulseDuration, ...
+                frequencyMultiplier, ...
+                arrayHeight, ...
+                doAWGN, ...
+                SNR, ...
+                doKaiser, ...
+                alfa, ...
+                chirpType, ...
+                angi, ...
+                GR1 ...
+        )
+            [scale, B, T, Fs, Ts, N, c, H] = ModelCSCS.getDesignParameters( ...
+                isRadar,...
+                modulationBandwidth, ...
+                pulseDuration, ...
+                frequencyMultiplier, ...
+                arrayHeight ...
+            );
+            Fsn=Fs/B;
+            K = B/T;
+          
+            [t, St, Sot, Sotdb, Ht] = ModelCSCS.chirp(K,T,N,doAWGN,SNR,doKaiser,alfa,chirpType);
+            [tm, Srt, Stc, Sotc, Sotcdb] = ModelCSCS.targets(K,T,Ts,c,H,doAWGN,SNR,Ht,chirpType,angi,GR1);
+        end            
     end
 
     methods (Access = public)
 
         % Construct model
-        function model = ModelCSCS(isSonar)
+        function model = ModelCSCS(isNotRadar)
             if nargin == 0
-                isSonar = 0;
+                isNotRadar = 0;
             end
             
-            model.isSonar = isSonar;
+            model.isRadar = ~isNotRadar;
             
             if nargout == 0
                 clear model
