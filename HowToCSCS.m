@@ -106,8 +106,8 @@ classdef (HandleCompatible) HowToCSCS
             Sot = conv(St, Ht, 'Same'); 
             Sotn = Sot./max(Sot);
             Sotdb = 20*log10(abs(Sotn));
-            H=arrayHeight*1e-6*scale; % array height [m for radar, mm for sonar]            
-            GR0 = H*tand(angi);            % ground range from Nadir to Near Range [m]            
+            H=arrayHeight*1e3;      % array height [convert km to m for radar]            
+            GR0 = H*tand(angi);     % ground range from Nadir to Near Range [m]            
             %% -- Multiple Targets -- %
             if isempty(find(GR1, 1)) == 1
                 GR1 = 0;

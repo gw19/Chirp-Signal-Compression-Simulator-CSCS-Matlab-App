@@ -44,7 +44,11 @@ classdef ModelCSCS < HowToCSCS
             Ts = 1/Fs;              % sampling time per grid
             N = T/Ts;               % grid points
             c = ModelCSCS.waveSpeed(isRadar);
-            H = arrayHeight*1e-6*scale; % array height [m for radar, mm for sonar]
+            if(isRadar)
+                H = arrayHeight*1e3; % array height [km to metres for radar]
+            else
+                H = arrayHeight*1e-2; % array height [cm to metres otherwise]
+            end
         end
         
         %% Additive White Gaussian Noise

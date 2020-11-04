@@ -829,13 +829,20 @@ classdef ViewCSCS < handle
             app.Label32 = uilabel(app.Tab2);
             app.Label32.FontSize = 14;
             app.Label32.Position = [165 363 27 18];
-            app.Label32.Text = '[km]';
-
+            if(app.isRadar)
+                app.Label32.Text = '[km]';
+            else
+                app.Label32.Text = '[cm]';
+            end
             % Create Label33
             app.Label33 = uilabel(app.Tab2);
             app.Label33.FontSize = 14;
             app.Label33.Position = [92 480 27 18];
-            app.Label33.Text = '[km]';
+            if(app.isRadar)
+                app.Label33.Text = '[km]';
+            else
+                app.Label33.Text = '[cm]';
+            end
 
             % Create disp_h
             app.disp_h = uieditfield(app.Tab2, 'numeric');
