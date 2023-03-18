@@ -16,5 +16,4 @@ First, determine the bandwidth, pulse duration, sampling frequency and chirp for
 Second, assume that all of the targets are on the ground range, input the radar height, incidence angle, and ranges between the near range and targets, check if it can be identified by compressing the combination signal after the matched filter.  
 
 Thank You,  
-GW  
-imgw19@gmail.com  
+GW
